@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Voice Emotion Recognition</title>
+    <!-- Chart.js for timeline dashboard -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #4e54c8, #8f94fb);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.12);
+            padding: 30px;
+            width: 900px;
+            border-radius: 16px;
+            box-shadow: 0px 0px 25px rgba(0, 0, 0, 0.25);
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        h2 {
+            margin-bottom: 20px;
+        }
+
+        input[type="file"] {
+            padding: 10px;
+            border-radius: 8px;
+            background: white;
+            color: black;
+        }
+
+        button {
+            margin-top: 20px;
+            padding: 12px 22px;
+            border-radius: 10px;
+            background: #ffca28;
+            color: black;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        button:hover {
+            background: #ffb300;
+        }
+
+        .result {
+            margin-top: 25px;
+            font-size: 22px;
+            animation: fadeIn 0.8s ease-in-out;
+            background: rgba(255, 255, 255, 0.20);
+            padding: 15px;
+            border-radius: 12px;
+        }
+
+        .dashboard {
+            margin-top: 25px;
+            text-align: left;
+        }
+
+        .dashboard h3 {
+            margin-bottom: 10px;
+        }
+
+        #chartContainer {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        th,
+        td {
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        th {
+            text-align: left;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0px);
+            }
+        }
+
+        audio {
+            margin-top: 20px;
+            width: 100%;
+            outline: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h2>Voice Emotion Recognition</h2>
+
+        <form action="/predict" method="POST" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".wav" id="audioFile" required>
+            <br>
+            <button type="submit">Analyze Emotions</button>
+        </form>
+
+        <!-- Audio Player Preview -->
+        <audio id="audioPlayer" controls style="display: none;"></audio>
+
+        <!-- Overall Prediction Output -->
+        {% if prediction %}
+        <div class="result">
+            Overall Dominant Emotion: <strong>{{ prediction }}</strong>
+        </div>
+        {% endif %}
+
+        <!-- Dashboard: timeline + changes table -->
+        {% if timeline %}
+        <div class="dashboard">
+            <h3>Emotion Timeline</h3>
+            <div id="chartContainer">
+                <canvas id="emotionChart" height="120"></canvas>
+            </div>
+
+            <h3>Emotion Changes (by time)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time (mm:ss)</th>
+                        <th>Emotion</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for point in changes %}
+                    <tr>
+                        <td>
+                            {% set minutes = (point.time // 60) | int %}
+                            {% set seconds = (point.time % 60) | int %}
+                            {{ "%02d:%02d" % (minutes, seconds) }}
+                        </td>
+                        <td>{{ point.emotion | capitalize }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+    </div>
+
+    <script>
+        // Show audio preview after selecting file
+        const fileInput = document.getElementById("audioFile");
+        const audioPlayer = document.getElementById("audioPlayer");
+
+        fileInput.addEventListener("change", function () {
+            const file = this.files[0];
+            if (file) {
+                audioPlayer.src = URL.createObjectURL(file);
+                audioPlayer.style.display = "block";
+            }
+        });
+
+        // Timeline chart rendering (only if backend provided data)
+        {% if timeline and emotions %}
+        const timelineData = {{ timeline | tojson }};
+        const emotionsList = {{ emotions | tojson }};
+
+        function secondsToLabel(sec) {
+            const minutes = Math.floor(sec / 60);
+            const seconds = Math.floor(sec % 60);
+            return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+        }
+
+        // Map emotions to indices for y-axis and assign colors
+        const emotionIndex = (emotion) => emotionsList.indexOf(emotion);
+        const emotionColors = {
+            "angry": "#ff5252",
+            "happy": "#ffeb3b",
+            "sad": "#64b5f6",
+            "neutral": "#b0bec5",
+            "fear": "#ff9800",
+            "disgust": "#8bc34a",
+            "surprise": "#ce93d8",
+        };
+
+        const points = timelineData.map(p => ({
+            x: p.time,
+            y: emotionIndex(p.emotion),
+            emotion: p.emotion,
+        }));
+
+        const ctx = document.getElementById("emotionChart").getContext("2d");
+        new Chart(ctx, {
+            type: "scatter",
+            data: {
+                datasets: [{
+                    label: "Emotion over time",
+                    data: points,
+                    showLine: false,
+                    pointRadius: 5,
+                    pointBackgroundColor: points.map(p => emotionColors[p.emotion] || "#ffffff"),
+                }]
+            },
+            options: {
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                const p = context.raw;
+                                return `${secondsToLabel(p.x)} - ${p.emotion}`;
+                            }
+                        }
+                    },
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        type: "linear",
+                        title: {
+                            display: true,
+                            text: "Time (seconds)"
+                        }
+                    },
+                    y: {
+                        ticks: {
+                            stepSize: 1,
+                            callback: function (value) {
+                                const idx = Math.round(value);
+                                return emotionsList[idx] || "";
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: "Emotion"
+                        },
+                        min: -0.5,
+                        max: emotionsList.length - 0.5,
+                    }
+                }
+            }
+        });
+        {% endif %}
+    </script>
+
+</body>
+
+</html>
