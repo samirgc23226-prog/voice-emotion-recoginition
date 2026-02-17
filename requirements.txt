@@ -4,3 +4,4 @@ librosa
 numpy
 soundfile
 gunicorn
+python-3.10.13
